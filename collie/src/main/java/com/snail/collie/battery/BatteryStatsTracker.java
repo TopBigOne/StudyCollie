@@ -28,7 +28,7 @@ import java.util.List;
 
 public class BatteryStatsTracker implements ITracker {
     private static BatteryStatsTracker sInstance;
-    private Handler mHandler;
+    private final Handler mHandler;
     private String display;
     private int mStartPercent;
 
@@ -54,6 +54,7 @@ public class BatteryStatsTracker implements ITracker {
         public void onActivityStarted(@NonNull Activity activity) {
             super.onActivityStarted(activity);
             final Application application = activity.getApplication();
+
             if (mStartPercent == 0 && ActivityStack.getInstance().getTopActivity() == activity) {
                 mHandler.post(new Runnable() {
                     @Override

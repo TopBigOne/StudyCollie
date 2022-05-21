@@ -118,6 +118,8 @@ public class Collie {
 //                if(duration>800){
 //                    Toast.makeText(activity,"耗时 "+duration+"ms",Toast.LENGTH_SHORT).show();
 //                }
+
+                //  观察者模式
                 for (CollieListener collieListener : mCollieListeners) {
                     collieListener.onActivityLaunchCost(activity, duration,finishNow);
                 }
@@ -211,6 +213,7 @@ public class Collie {
     public void init(@NonNull Application application,
                      final Config config,
                      final CollieListener listener) {
+
         application.registerActivityLifecycleCallbacks(mActivityLifecycleCallback);
         mCollieListeners.add(listener);
 

@@ -19,6 +19,7 @@ import com.snail.collie.core.SimpleActivityLifecycleCallbacks
 object LauncherTracker : ITracker {
 
     private var collectHandler: Handler = Handler(CollieHandlerThread.getInstance().handlerThread.looper)
+
     private var codeStartUp = false
     private var launcherFlag = 0
     private var createFlag = 1
@@ -26,72 +27,76 @@ object LauncherTracker : ITracker {
     private val mUIHandler = Handler(Looper.getMainLooper())
     var iLaunchTrackListener: ILaunchTrackListener? = null
     private var sStartUpTimeStamp = 0L
-    private val activityLifecycleCallbacks: Application.ActivityLifecycleCallbacks =
-        object : SimpleActivityLifecycleCallbacks() {
-            override fun onActivityCreated(p0: Activity, p1: Bundle?) {
-                super.onActivityCreated(p0, p1)
-                // 重新开始或者第一个Activity
-                if (lastActivityPauseTimeStamp == 0L) {
-                    lastActivityPauseTimeStamp = SystemClock.uptimeMillis()
-                }
-                launcherFlag = createFlag
-                val currentTimeStamp = lastActivityPauseTimeStamp
-                mUIHandler.post {
-                    if (p0.isFinishing) {
-                        collectInfo(p0, currentTimeStamp, true)
-                        lastActivityPauseTimeStamp = SystemClock.uptimeMillis()
-                    }
-                }
-            }
 
-            override fun onActivityResumed(p0: Activity) {
-                super.onActivityResumed(p0)
-                if (launcherFlag == createFlag) {                mUIHandler.post {
 
-                    SystemClock.sleep(5000)
-                    Log.v("Collie","postresume") }
+    /**
+     * Activity lifecycle callbacks
+     */
+    private val activityLifecycleCallbacks: Application.ActivityLifecycleCallbacks = object :
+            SimpleActivityLifecycleCallbacks() {
 
-                    val currentTimeStamp = lastActivityPauseTimeStamp
-                    (p0.window.decorView as ViewGroup).addView(InnerView(p0, currentTimeStamp))
-                    p0.window.decorView.viewTreeObserver.addOnWindowFocusChangeListener(object :
-                        ViewTreeObserver.OnWindowFocusChangeListener {
-                        override fun onWindowFocusChanged(hasFocus: Boolean) {
-
-                            if (hasFocus) {
-                                iLaunchTrackListener?.let {
-                                    it.onActivityFocusableCost(
-                                        p0,
-                                        SystemClock.uptimeMillis() - currentTimeStamp,
-                                        false
-                                    )
-                                }
-                            }
-                            p0.window.decorView.viewTreeObserver.removeOnWindowFocusChangeListener(
-                                this
-                            )
-                        }
-                    })
-                }
-                launcherFlag = 0
-            }
-
-            override fun onActivityPaused(p0: Activity) {
-                super.onActivityPaused(p0)
+        override fun onActivityCreated(p0: Activity, p1: Bundle?) {
+            super.onActivityCreated(p0, p1)
+            // 重新开始或者第一个Activity
+            if(lastActivityPauseTimeStamp == 0L) {
                 lastActivityPauseTimeStamp = SystemClock.uptimeMillis()
-                launcherFlag = 0
-                //
-                codeStartUp = false
             }
+            launcherFlag = createFlag
+            val currentTimeStamp = lastActivityPauseTimeStamp
 
-            override fun onActivityStopped(p0: Activity) {
-                super.onActivityStopped(p0)
-                // 退到后台
-                if (launcherFlag == 0) {
-                    launcherFlag = 0
-                    lastActivityPauseTimeStamp = 0
+            mUIHandler.post {
+                if(p0.isFinishing) {
+                    collectInfo(p0, currentTimeStamp, true)
+                    lastActivityPauseTimeStamp = SystemClock.uptimeMillis()
                 }
             }
         }
+
+        override fun onActivityResumed(p0: Activity) {
+            super.onActivityResumed(p0)
+
+            if(launcherFlag == createFlag) {
+                mUIHandler.post {
+
+                    SystemClock.sleep(5000)
+                    Log.v("Collie", "postresume")
+                }
+
+                val currentTimeStamp = lastActivityPauseTimeStamp
+                (p0.window.decorView as ViewGroup).addView(InnerView(p0, currentTimeStamp))
+                p0.window.decorView.viewTreeObserver.addOnWindowFocusChangeListener(object :
+                        ViewTreeObserver.OnWindowFocusChangeListener {
+                    override fun onWindowFocusChanged(hasFocus: Boolean) {
+
+                        if(hasFocus) {
+                            iLaunchTrackListener?.let {
+                                it.onActivityFocusableCost(p0, SystemClock.uptimeMillis() - currentTimeStamp, false)
+                            }
+                        }
+                        p0.window.decorView.viewTreeObserver.removeOnWindowFocusChangeListener(this)
+                    }
+                })
+            }
+            launcherFlag = 0
+        }
+
+        override fun onActivityPaused(p0: Activity) {
+            super.onActivityPaused(p0)
+            lastActivityPauseTimeStamp = SystemClock.uptimeMillis()
+            launcherFlag = 0
+            //
+            codeStartUp = false
+        }
+
+        override fun onActivityStopped(p0: Activity) {
+            super.onActivityStopped(p0)
+            // 退到后台
+            if(launcherFlag == 0) {
+                launcherFlag = 0
+                lastActivityPauseTimeStamp = 0
+            }
+        }
+    }
 
 
     override fun destroy(application: Application) {
@@ -102,6 +107,7 @@ object LauncherTracker : ITracker {
     override fun startTrack(application: Application) {
         sStartUpTimeStamp = SystemClock.uptimeMillis()
         application.registerActivityLifecycleCallbacks(activityLifecycleCallbacks)
+
         collectHandler.post {
             codeStartUp = isForegroundProcess(application)
         }
@@ -111,16 +117,30 @@ object LauncherTracker : ITracker {
 
     }
 
+    /**
+     * Collect info
+     *
+     * @param activity
+     * @param lastPauseTimeStamp
+     * @param finishNow
+     */
     private fun collectInfo(activity: Activity, lastPauseTimeStamp: Long, finishNow: Boolean) {
 
         val markTimeStamp = SystemClock.uptimeMillis()
         val activityStartCost = markTimeStamp - lastPauseTimeStamp
+
         collectHandler.post {
             iLaunchTrackListener?.let {
-                if (codeStartUp) {
-                    val coldLauncherTime = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N)
-                        markTimeStamp - Process.getStartUptimeMillis() else
+                if(codeStartUp) {
+                    // 冷启动时间
+                    val coldLauncherTime = if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                        // 进程启动时间
+                        markTimeStamp - Process.getStartUptimeMillis()
+                    } else {
                         markTimeStamp - sStartUpTimeStamp
+                    }
+
+                    // 触发冷回调
                     it.onAppColdLaunchCost(coldLauncherTime, ProcessUtil.getProcessName())
                     codeStartUp = false
                 }
@@ -132,10 +152,9 @@ object LauncherTracker : ITracker {
 
     // 判断进程启动的时候是否是前台进程
     private fun isForegroundProcess(context: Context): Boolean {
-        val runningAppProcesses =
-            (context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager).runningAppProcesses
+        val runningAppProcesses = (context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager).runningAppProcesses
         for (info in runningAppProcesses) {
-            if (Process.myPid() == info.pid) {
+            if(Process.myPid() == info.pid) {
                 return info.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
             }
         }
@@ -148,8 +167,7 @@ object LauncherTracker : ITracker {
         fun onActivityFocusableCost(activity: Activity?, duration: Long, finishNow: Boolean)
     }
 
-    class InnerView(val activity: Activity, private val lastPauseTimeStamp: Long) :
-        View(activity) {
+    class InnerView(val activity: Activity, private val lastPauseTimeStamp: Long) : View(activity) {
         var marked = false
 
         init {
@@ -158,7 +176,7 @@ object LauncherTracker : ITracker {
 
         override fun onDraw(canvas: Canvas?) {
             super.onDraw(canvas)
-            if (marked) {
+            if(marked) {
                 return
             }
             marked = true
